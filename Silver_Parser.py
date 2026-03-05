@@ -1,5 +1,5 @@
 """
-Bryce_Parser
+Silver_Parser
 
  - Parses a stream of typed tokens and spits out Python Code.
 
@@ -8,9 +8,10 @@ History:
                 compiler for Transcript reports.
 """
 
-import Bryce_Lexer
+import Silver_Lexer
+from datetime import datetime
 
-class Bryce_Parser:
+class Silver_Parser:
 
     """
     # GRAMMAR for Bryce Code.
@@ -23,7 +24,7 @@ class Bryce_Parser:
         self.src_file = open_src_file
         self.dst_file = open_dst_file
 
-        self.tokenStream = Bryce_Lexer.Bryce_Lexer(open_src_file)
+        self.tokenStream = Silver_Lexer.Silver_Lexer(open_src_file)
         self.lookAheadBuffer = []
         self.symbol_table = [] # All declared symbols.   
 
@@ -106,27 +107,32 @@ class Bryce_Parser:
 
     # Side-Effect: conversion of src file is written to dst file.
     #              src file object is consumed and should be closed.
+    # Returns True if and only if no errors were produced.
     def parseFile(self):
         
         self.pushScope()
-        self.write("# Bryce Code File, generated from Bryce_Parser.py\n")
+        
+        now  = datetime.now()
+        time = f'{now.strftime("%B")[:3]}.{now.strftime("%d.%y")}'
+        self.write(f"# Bryce Code File, generated on {time} from Silver_Parser.py\n")
+
         self.Bryce_Code_File()
         self.popScope()
 
     def Bryce_Code_File(self):
         
-        self.Expect(Bryce_Lexer.Bryce_Lexer.Token.Start,
-                    Bryce_Lexer.Bryce_Lexer.Token.Start)
+        self.Expect(Silver_Lexer.Silver_Lexer.Token.Start,
+                    Silver_Lexer.Silver_Lexer.Token.Start)
         self.Statements()
 
 
     def Statements(self):
         
-        while self.lookAhead(1)['type'] != Bryce_Lexer.Bryce_Lexer.Token.End:
+        while self.lookAhead(1)['type'] != Silver_Lexer.Silver_Lexer.Token.End:
             self.Statement()
 
-        self.Expect(Bryce_Lexer.Bryce_Lexer.Token.End,
-                    Bryce_Lexer.Bryce_Lexer.Token.End)
+        self.Expect(Silver_Lexer.Silver_Lexer.Token.End,
+                    Silver_Lexer.Silver_Lexer.Token.End)
 
     def Statement(self):
 

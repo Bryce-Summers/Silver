@@ -1,5 +1,5 @@
 """
-Bryce_Lexer
+Silver_Lexer
 
  - Converts a stream of characters from a file into a stream of tokens.
 
@@ -8,7 +8,7 @@ History:
                 compiler for Transcript reports.
 """
 
-class Bryce_Lexer:
+class Silver_Lexer:
 
     from enum import Enum
 
@@ -17,7 +17,7 @@ class Bryce_Lexer:
 
     def __init__(self, open_src_file):
         
-        charStream = Bryce_Lexer.charStream(open_src_file)
+        charStream = Silver_Lexer.charStream(open_src_file)
         self.char_list = [char for char in charStream]
         self.next_char_index = -1
         self.end_of_stream_index = len(self.char_list)
@@ -89,15 +89,15 @@ class Bryce_Lexer:
     def _calculateNextToken (self):
         
         if self.next_char_index < 0:
-            self.token_type = Bryce_Lexer.Token.Start
-            self.next_token = Bryce_Lexer.Token.Start
+            self.token_type = Silver_Lexer.Token.Start
+            self.next_token = Silver_Lexer.Token.Start
             self.next_char_index += 1
 
             return
 
         if self.next_char_index >= self.end_of_stream_index:
-            self.token_type = Bryce_Lexer.Token.End
-            self.next_token = Bryce_Lexer.Token.End
+            self.token_type = Silver_Lexer.Token.End
+            self.next_token = Silver_Lexer.Token.End
             self.next_char_index += 1
 
             return  # End of file.
