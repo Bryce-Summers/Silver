@@ -1,0 +1,6 @@
+char x = input()
+print2 = "print x, then print x"
+print4 means "print2 , then print2 "
+print8 means "print4 , print4      "
+
+print8, print4, then print x

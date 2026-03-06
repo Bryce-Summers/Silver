@@ -1,13 +1,2 @@
-# Bryce Code File, generated on Mar.05.26 from Silver_Parser.py
-print(input())
-print(input())
-print(input())
-print(input())
-print(input())
-x = input() # Bryce Code Error: Variable x is undeclared.
-input()
-print(x #[Bryce Code Error: Variable x is undeclared]#)
-print(x #[Bryce Code Error: Variable x is undeclared]#)
-x = str() # Declaration of x as a variable of type char.
-x = input()
-print(x)
+x = str(input()) # Declaration of x as a variable of type char.
+print2 # [<- I can't assign a value to the variable print2 that doesn't yet exist. Try to declare print2 by writing a typename before the variable name. Ex: char x = ..., rather than x = ...]  =  # [<- The String token ["print x, then print x"] is not the start of an Agnostic programming language expression. Try to write an expression that I can understand, such as input(), '(' expression ')', or a variable name. ] 

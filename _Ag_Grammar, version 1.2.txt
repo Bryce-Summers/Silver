@@ -1,22 +1,25 @@
+# Last Modified by Bryce Summers on Mar.6.2026.
 """
-    # GRAMMAR for Bryce Code file.
+    # GRAMMAR for .ag files.
 
 
     # Production Rules to be used in the Parser.
 
-    Bryce_Code_File = ^ Statements # ^ is start of file token.
+    Agnostic_Programming_File = ^ Statements # ^ is start of file token.
 
     Statements = | Statement Statements
                  | $                    # End of File token.
 
-    Statement = | "print" Expression
+    Statement = | '\n\n'                # Multi-Newline.
+                | "print" Expression
                 | Input_Statement
                 | Declaration_Statement
-                | variable_name '=' Expression # Assignment.
+                | Assignment_Statement
+                | Definition_Statement
 
     Expression = | Input_Statement
                  | '(' Expression ')'
-                 | variable_name
+                 | Lvalue
                  | Literal
 
     Literal = | string
@@ -27,8 +30,18 @@
     Input_Statement = | "input" '(' ')'
                       | "input"
 
-    Declaration_Statement = | 'declare' type_name variable_name
-                            | type_name variable_name
+    Declaration_Statement = | Type_Declaration variable_name
+                            | Type_Declaration variable_name '=' 
+                              Expression
+
+    Type_Declaration = | 'declare' type_name
+                       | type_name
+
+    Assignment_Statement = | Lvalue '=' Expression
+
+    Lvalue = | variable_name
+
+    Definition_Statement = | variable_name 'means' string
 
     # Uppercase are Non-Terminals.
     # Lowercase are individual tokens (terminals).

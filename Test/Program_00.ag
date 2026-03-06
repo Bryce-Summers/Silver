@@ -1,0 +1,22 @@
+print input
+print input ()
+print( input)
+print(input())
+print (input (  )   )
+
+char x = input()
+print(x)
+input()
+print input
+print(x)
+
+x = input()
+print  (    x)
+
+print
+(
+x  )
+print ((((((((x
+            ))))
+)    )
+) )

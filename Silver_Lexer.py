@@ -26,6 +26,9 @@ class Silver_Lexer:
         self.matchFound = True
         self.token_type = None
 
+        self.src_line_number           = 1
+        self.src_index_of_last_newline = 0
+
     def charStream(src_file):
 
         # blank line is '\n', EOF is ""
@@ -46,8 +49,10 @@ class Silver_Lexer:
             return False
 
     def Expect(self, predicate):
-        if not self.Accept(predicate):
+        as_expected = self.Accept(predicate)
+        if not as_expected:
             self.matchFound = False # Short-circuit remainder of calling function.
+            return False
         return True
 
     def ExpectChar(self, char):
@@ -78,13 +83,38 @@ class Silver_Lexer:
     # -----------------------------------------------------------------
     def nextToken(self):
 
+        def current_char_number():
+            return self.next_char_index - self.src_index_of_last_newline + 1
+
+        char_number = current_char_number()
+
+        newlineTokensInARow = 0
+
         self._calculateNextToken()
 
         # Don't distribute whitespace tokens to the parser.
-        while self.token_type == 'ws':
+        while self.token_type in ['ws', 'newline']:
+            
+            # Keep track of line numbers and column numbers for debugging.
+            if self.token_type == 'newline':
+                self.src_line_number += 1
+                self.src_index_of_last_newline = self.next_char_index
+                newlineTokensInARow += 1
+
+            # Dispatch a token for multiple newlines in a row.
+            if newlineTokensInARow == 2:
+                self.token_type = "Multi_Newline"
+                self.value = '\n\n'
+                break
+
+            char_number = current_char_number() # Calculated at a time before the token has been read.
             self._calculateNextToken()
 
-        return {'type':self.token_type, 'value':self.next_token}
+        token = {'type':self.token_type, 'value':self.next_token,
+                 'line_number': self.src_line_number, 'char_number': char_number}
+        
+        print(token)
+        return token
 
     def _calculateNextToken (self):
         
@@ -115,23 +145,37 @@ class Silver_Lexer:
 
     # Describes the order in which all possible tokens are tested.
     def anytoken(self):
-        if self.ws() or\
+        if self.newline() or\
+           self.ws() or\
            self.syntaxSymbol() or\
            self.keyword() or\
            self.typename() or\
            self.variable_name() or\
-           self.number():
+           self.literal():
            self.next_char_index = self.match_index
            return # A token was lexed properly.
 
         raise Exception(f"LexerError: No prefix was matched for input:"
                        f"{"".join(self.char_list[self.next_char_index:])}"  )
 
+    def newline(self):
+
+        self.startMatch()
+
+        self.Expect(lambda c: c == "\n")
+
+        if self.matchFound:
+            self.next_token = self.matchText()
+            self.token_type = "newline"
+
+        return self.matchFound 
+
     def ws(self):
         self.startMatch()
 
-        self.Expect(lambda c: c in list(" \t\n"))
-        while self.Accept(lambda c: c in " \t"): pass
+        whitespace = lambda c: c in list(" \t")
+        self.Expect(whitespace)
+        while self.Accept(whitespace): pass
 
         if self.matchFound:
             self.next_token = self.matchText()
@@ -163,7 +207,9 @@ class Silver_Lexer:
             self.startMatch()
             self.ExpectString(word)
 
-            if self.matchFound:
+            # Typenames cannot contain letters or numbers after the keyword.
+            if self.matchFound and not self.lookAhead(1).isalnum():
+            
                 self.next_token = self.matchText()
                 self.token_type = "Keyword"
 
@@ -181,7 +227,9 @@ class Silver_Lexer:
             self.startMatch()
             self.ExpectString(word)
 
-            if self.matchFound:
+            # Typenames cannot contain letters or numbers after the keyword.
+            if self.matchFound and not self.lookAhead(1).isalnum():
+
                 self.next_token = self.matchText()
                 self.token_type = "Type_Name"
 
@@ -207,6 +255,59 @@ class Silver_Lexer:
         self.token_type = "Variable_Name"
         return True
 
+    # Returns true if it has matched any kind of literal.
+    def literal(self):
+        return self.string()  or self.char() or \
+               self.boolean() or self.number()
+
+    def string(self):
+        
+        self.startMatch()
+
+        self.ExpectChar(quote := '"')
+        while self.Accept(lambda c:c != quote): pass
+        self.ExpectChar(quote)
+
+        if not self.matchFound: return False
+           
+        token_text = self.matchText()
+
+        self.next_token = str(token_text)
+        self.token_type = "String" # String.
+
+        return True
+
+    def char(self):
+        self.startMatch()
+
+        self.ExpectChar(quote := "'")
+        self.Expect(lambda c:c != quote)
+        self.ExpectChar(quote)
+
+        if not self.matchFound: return False
+
+        token_text = self.matchText()
+
+        self.next_token = str(token_text)
+        self.token_type = "Char" # Char.
+
+        return True
+
+    def boolean(self):
+        
+        self.startMatch()
+        if self.ExpectString('True') :
+            self.next_token = self.matchText() # "True"
+            self.token_type = "Boolean"
+            return True
+
+        self.startMatch()
+        if self.ExpectString('False'):
+            self.next_token = self.matchText() # "False"
+            self.token_type = "Boolean"
+            return True
+
+        return False
 
     def number(self):
         self.startMatch()
@@ -233,10 +334,10 @@ class Silver_Lexer:
 
             if '.' in token_text:
                 self.next_token = float(token_text)
-                self.token_type = "Number" # Int.
+                self.token_type = "Int" # Int.
             else:
                 #print(f"Token text: {token_text}")
                 self.next_token = int(token_text)
-                self.token_type = "Number" # Float.
+                self.token_type = "Float" # Float.
 
         return self.matchFound

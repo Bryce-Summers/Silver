@@ -26,7 +26,9 @@ class Silver_Parser:
 
         self.tokenStream = Silver_Lexer.Silver_Lexer(open_src_file)
         self.lookAheadBuffer = []
-        self.symbol_table = [] # All declared symbols.   
+        self.symbol_table = [] # All declared symbols.
+        self.warnings = {'count':0}
+        self.linemap  = {'python_line':1}
 
     def write(self, str):
         self.dst_file.write(str)
@@ -58,27 +60,30 @@ class Silver_Parser:
         return deqValue
 
 
-    # Consumes the next symbol, returns true if it is 
+    # Consumes the next symbol, throws an error if token is unexpected.
+    # Returns token if it is as expected.
     def Expect(self, expectedTokenType, expectedTokenValue):
         
         next = self.consumeToken()
 
-        if expectedTokenType != None and expectedTokenType != next['type']:
-            self.Error(f'Type Error. Expected:[{expectedTokenType}],  Yours:[{next['type']}]')
+        if expectedTokenValue != None:
+            fix_it = f"replace [{next['value']}] with [{expectedTokenValue}]."
+        elif expectedTokenType != None:
+            fix_it = f"replace [{next['value']}] with a [{expectedTokenType}]."
+        else:
+            raise Exception("This should be impossible.")
+
 
         if expectedTokenValue != None and expectedTokenValue != next['value']:
-            self.Error(f'Syntax Error. Expected:{expectedTokenValue},  Yours:[{next['value']}]')
+            self.Error('Syntax Error', f"I saw [{next['value']}] in your code", fix_it, next)
+        elif expectedTokenType != None and expectedTokenType != next['type']:
+            self.Error('Type Error', f"I saw [{next['value']}] in your code, which is a {next['type']}", fix_it, next)
         
-        # Everything checked out.
-        return True
+        self.linemap[self.linemap['python_line']] = next['line_number']
+
+        # The token is as expected.
+        return next
         
-
-    def Error(self, message):
-        output = []
-        for x in range(7):
-            output.append(str(self.lookAhead(1 + x)))
-        raise Exception(message + "\n" + "\n".join(output))
-
     def ExpectString(self, expectedString):
 
         for symbol in expectedString: self.Expect(symbol)
@@ -98,6 +103,43 @@ class Silver_Parser:
     def declareSymbol(self, name, type):
         self.symbol_table[-1][name] = type
 
+    # ==============================================================
+    # Methods for providing the user with feedback on their program.
+    def Error(self, kind_of_problem, what_is_wrong, advice_on_how_to_fix_it, token):
+        """
+        output = []
+        for x in range(7):
+            output.append(str(self.lookAhead(1 + x)))
+        raise Exception(message + "\n" + "\n".join(output))
+        """
+        self.warn(kind_of_problem, what_is_wrong, advice_on_how_to_fix_it, token)
+        print("\nGiving up on compilation.")
+        exit()
+
+    # keep going, its a warning, because we think we can fix the problem during compilation.
+    # Warn reports, but doesn't crash the compiler.
+    def warn (self, kind_of_problem, what_is_wrong, advice_on_how_to_fix_it, token):
+        self.warnings['count'] += 1
+        self.write(f" # [<- {what_is_wrong}. Try to {advice_on_how_to_fix_it}] ")
+        self.report(kind_of_problem, what_is_wrong, advice_on_how_to_fix_it, token)
+
+    # Report a problem to the user.
+    def report(self, kind_of_problem, what_is_wrong, advice_on_how_to_fix_it, token):
+        id = self.warnings['count']
+
+        here = f"line {token['line_number']}, column {token['char_number']}"
+
+        if id == 1 :
+            print(f"\nHey there! I'm the silver compiler and I'm here to help you!\n"\
+                  f"Here's some constructive feedback on your program:")
+        print(f"\n{id}. At {here}, a {kind_of_problem} has occured.")
+        print(f"I don't understand your code, because {what_is_wrong}.")
+        print(f"To help me out, {advice_on_how_to_fix_it}")
+        #if terminate: exit()
+
+    def pythonToAgLineNumber(self, pythonLineNumber):
+        return self.linemap[pythonLineNumber]
+
     # ======================================================
     # Everything before this are just helper functions.
     # Here is the parser, implemented via recursive descent.
@@ -114,10 +156,15 @@ class Silver_Parser:
         
         now  = datetime.now()
         time = f'{now.strftime("%B")[:3]}.{now.strftime("%d.%y")}'
-        self.write(f"# Bryce Code File, generated on {time} from Silver_Parser.py\n")
 
         self.Bryce_Code_File()
         self.popScope()
+
+        self.write(f"\n# -------------------------------------------------------------\n")
+        self.write(f"# Bryce Code File, generated on {time} from Silver_Parser.py\n")
+        self.write(f"# --------------------------------------------------------------")
+
+        return self.warnings['count']
 
     def Bryce_Code_File(self):
         
@@ -136,37 +183,40 @@ class Silver_Parser:
 
     def Statement(self):
 
-        if self.checkLookAhead(1, 'Keyword', 'print'):
+        # Add an extra space to visually separate
+        # Blocks of text in the output.
+        if self.checkLookAhead(1, 'Multi_Newline', None):
+            self.Expect('Multi_Newline', None)
+
+        # Print statements.
+        elif self.checkLookAhead(1, 'Keyword', 'print'):
            self.Expect('Keyword', "print")
            self.write("print(") # Code.
            self.Expression()
            self.write(")")
+
+        # Input statements.
         elif self.checkLookAhead(1, 'Keyword', 'input'):
             self.Input_Statement()
 
-        # Declaration Statement.
-        elif self.checkLookAhead(1, 'Type_Name', None) or\
-             self.checkLookAhead(1, 'Keyword', "declare"):
-            
+        # Declaration Statement
+        elif self.checkLookAhead(1, 'Keyword', "declare") or\
+             self.checkLookAhead(1, "Type_Name", None):
             self.Declaration_Statement()
 
         # Assignment Statement.
-        elif self.checkLookAhead(1, 'Variable_Name', None):
-            value = self.lookAhead(1)['value']
+        elif self.checkLookAhead(1, 'Variable_Name', None):           
+            self.Assignment_Statement()
 
-            self.Expect('Variable_Name', value)
-            self.write(value)
-            self.Expect('Syntax Symbol', '=')
-            self.write(' = ')
-            self.Expression()
-
-            if(not self.symbolDefined(value)):
-                self.write(f" # Bryce Code Error: Variable {value} is undeclared.")
-                #raise Exception(f"Variable {value} is undeclared.")
         else:
-            self.Error("Parse Error: Not a statement.")
+            token = self.lookAhead(1)
+            value = token['value']
+            type  = token['type' ]
+            #self.Error("Parse Error: Not a statement.")
+            self.Error("Parse Error", f"The {type} token [{value}] is not the start of an Agnostic programming language statement", "write a statement that I can understand, such as print(input()), char x, or x = input().", token)
 
         self.write("\n")
+        self.linemap['python_line'] += 1 # Keep track of python line number.
 
     def Expression(self):
         if self.checkLookAhead(1, 'Keyword', 'input'):
@@ -178,13 +228,20 @@ class Silver_Parser:
             self.Expect('Syntax Symbol', ')')
 
         elif self.checkLookAhead(1, 'Variable_Name', None):
-            value = self.lookAhead(1)['value']
-            self.Expect('Variable_Name', value)
-            self.write(value)
-            if(not self.symbolDefined(value)):
-                self.write(f" #[Bryce Code Error: Variable {value} is undeclared]#")
+            
+            token   = self.lookAhead(1)
+            varname = self.Lvalue()
+
+            if(not self.symbolDefined(varname)):
+                self.warn("Compile Error", f"The variable {varname} doesn't exist yet", f"declare the variable before using it in this expression.", token)
         else:
-            raise Exception("Parse Error: Not an expression.")
+            token = self.lookAhead(1)
+            value = token['value']
+            type  = token['type']
+            
+            self.Error("Parse Error", f"The {type} token [{value}] is not the start of an Agnostic programming language expression", "write an expression that I can understand, such as input(), '(' expression ')', or a variable name. ", token)
+
+            #raise Exception("Parse Error: Not an expression.")
 
     def Input_Statement(self):
         self.Expect("Keyword", "input")
@@ -194,27 +251,56 @@ class Silver_Parser:
 
         self.write("input()") # Code.
 
-    
     def Declaration_Statement(self):
 
-        if self.checkLookAhead(1, 'Keyword', "declare"):
-            self.Expect("Keyword", "declare")
+        type_value = self.Type_Declaration()
+        varname    = self.Expect("Variable_Name", None)['value']
 
-        type_value = self.lookAhead(1)['value']
-        self.Expect("Type_Name", None)
-        varname = self.lookAhead(1)['value']
-        self.Expect("Variable_Name", None)
         self.declareSymbol(varname, type_value)
 
         type_constructor = {'char':'str', 'String':'str',\
             'int':'int', 'float':'float', 'boolean':'bool'}
 
-        self.write(f"{varname} = {type_constructor[type_value]}() # Declaration of {varname} as a variable of type {type_value}.")
+        self.write(f"{varname} = {type_constructor[type_value]}(")
+
+        if self.checkLookAhead(1, "Syntax Symbol", '='):
+
+            self.Expect('Syntax Symbol', '=')
+            self.Expression()
+
+        self.write(')')
+        self.write(f" # Declaration of {varname} as a variable of type {type_value}.")
+        
         return
 
+    def Type_Declaration(self):
+        
+        if self.checkLookAhead(1, 'Keyword', "declare"):
+            self.Expect("Keyword", "declare")
+
+        return self.Expect("Type_Name", None)['value']
+
+    def Assignment_Statement(self):
+
+        token   = self.lookAhead(1)
+        varname = self.Lvalue()
+
+        if(not self.symbolDefined(varname)):
+            self.warn("Compile Error", f"I can't assign a value to the variable {varname} that doesn't yet exist",
+                     f"declare {varname} by writing a typename before the variable name. Ex: char x = ..., rather than x = ...", token)
+
+        self.Expect('Syntax Symbol', '=')
+        self.write(' = ')
+        self.Expression()
+
+        return
+
+    def Lvalue(self):
+
+        varname = self.Expect('Variable_Name', None)['value']
+        self.write(varname)
+        return varname
 
     def number_literal(self):
 
-        value = self.lookAhead(1)['value']
-        self.Expect('Number', None)
-        return value
+        return self.Expect('Number', None)['value']
