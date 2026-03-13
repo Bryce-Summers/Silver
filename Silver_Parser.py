@@ -24,20 +24,70 @@ class Silver_Parser:
         self.src_file = open_src_file
         self.dst_file = open_dst_file
 
-        self.tokenStream = Silver_Lexer.Silver_Lexer(open_src_file)
+        char_stream       =  Silver_Lexer.charStream(open_src_file)
+        self.tokenStreams = [Silver_Lexer.Silver_Lexer(char_stream)]
+
         self.lookAheadBuffer = []
-        self.symbol_table = [] # All declared symbols.
+        self.symbol_table = [] # All declared symbols. Stack.
+        self.macro_definitions = {}
         self.warnings = {'count':0}
         self.linemap  = {'python_line':1}
+        self.commentQueue = []
 
     def write(self, str):
         self.dst_file.write(str)
+
+    def _nextToken(self):
+        
+        # Stack of token streams.
+        # Always stream from the one on top first.
+        # Pop from stack of size >= 2 if top stream gets to its end token.
+        
+        while(True):
+
+            # Look at the next token from the top stream in the stack.
+            token = self.tokenStreams[-1].nextToken()
+            value = token['value']
+
+            # Case 1: The token is a macro.
+            if token['type' ] == 'Variable_Name' and\
+               value in self.macro_definitions:
+
+               definition_token = self.macro_definitions[value]
+
+               definition_text = definition_token['value']
+               line_number     = definition_token['line_number']
+               column_number   = definition_token['char_number'] + 1 # Account for opening '"' quote.
+
+               subStream  = Silver_Lexer.Silver_Lexer(definition_text, line_number, column_number)
+               
+               # Skip the sub stream's 
+               # Silver_Lexer.Silver_Lexer.Token.Start token.
+               subStream.nextToken()
+
+               self.tokenStreams.append(subStream)
+               continue
+
+            # Case 2: The token is the end of a sub stream.
+            if len(self.tokenStreams) > 1 and\
+               value == Silver_Lexer.Silver_Lexer.Token.End:
+               self.tokenStreams.pop()
+               continue
+
+            # Case 3: Comment
+            if(token['type'] == 'comment'):
+                self.commentQueue.append(value)
+                continue
+
+            # Case ?: We've received a normal token that should be parsed.
+            return token
+
 
     # k = 1: next token, k = 2: token after next token, etc.
     def lookAhead(self, k):
 
         while len(self.lookAheadBuffer) < k:
-            self.lookAheadBuffer.append(self.tokenStream.nextToken())
+            self.lookAheadBuffer.append(self._nextToken())
 
         return self.lookAheadBuffer[k - 1]
 
@@ -83,10 +133,13 @@ class Silver_Parser:
 
         # The token is as expected.
         return next
-        
-    def ExpectString(self, expectedString):
 
-        for symbol in expectedString: self.Expect(symbol)
+    # Specifies to consume this token if it comes next,
+    # and to not consume it if it is not coming next.
+    def Accept(self, expectedTokenType, expectedTokenValue):
+        if self.checkLookAhead(1, expectedTokenType, expectedTokenValue):
+            return self.Expect(expectedTokenType, expectedTokenValue)
+        return None
 
     def pushScope(self):
         self.symbol_table.append({})
@@ -102,6 +155,15 @@ class Silver_Parser:
 
     def declareSymbol(self, name, type):
         self.symbol_table[-1][name] = type
+
+    # Definition should be a string.
+    def defineSymbol(self, name, definition_string_token):
+
+        self.macro_definitions[name] = definition_string_token
+
+        print(definition_string_token)
+        definition = definition_string_token['value'][1:-1]
+        print(f"Definition: {name} -> [{definition}]")
 
     # ==============================================================
     # Methods for providing the user with feedback on their program.
@@ -140,6 +202,7 @@ class Silver_Parser:
     def pythonToAgLineNumber(self, pythonLineNumber):
         return self.linemap[pythonLineNumber]
 
+
     # ======================================================
     # Everything before this are just helper functions.
     # Here is the parser, implemented via recursive descent.
@@ -151,18 +214,19 @@ class Silver_Parser:
     #              src file object is consumed and should be closed.
     # Returns True if and only if no errors were produced.
     def parseFile(self):
-        
+    
         self.pushScope()
         
         now  = datetime.now()
         time = f'{now.strftime("%B")[:3]}.{now.strftime("%d.%y")}'
 
+        self.write(f"# --------------------------------------------------------------\n")
+        self.write(f"# Python Code File, generated on {time} from Silver_Parser.py\n")
+        self.write(f"# Silver compiles .Ag program files. Written by Bryce Summers.\n")
+        self.write(f"# --------------------------------------------------------------\n\n")
+
         self.Bryce_Code_File()
         self.popScope()
-
-        self.write(f"\n# -------------------------------------------------------------\n")
-        self.write(f"# Bryce Code File, generated on {time} from Silver_Parser.py\n")
-        self.write(f"# --------------------------------------------------------------")
 
         return self.warnings['count']
 
@@ -177,6 +241,8 @@ class Silver_Parser:
         
         while self.lookAhead(1)['type'] != Silver_Lexer.Silver_Lexer.Token.End:
             self.Statement()
+            self.Accept('Syntax Symbol', ',') # Just ignore.
+            self.Accept('Keyword', 'then')    # Just ignore.
 
         self.Expect(Silver_Lexer.Silver_Lexer.Token.End,
                     Silver_Lexer.Silver_Lexer.Token.End)
@@ -204,9 +270,17 @@ class Silver_Parser:
              self.checkLookAhead(1, "Type_Name", None):
             self.Declaration_Statement()
 
-        # Assignment Statement.
-        elif self.checkLookAhead(1, 'Variable_Name', None):           
-            self.Assignment_Statement()
+        elif self.checkLookAhead(1, 'Variable_Name', None):
+
+            # Definition Statement.
+            if self.checkLookAhead(2, 'Keyword', 'means'):
+                self.Definition_Statement()
+                return # Definitions don't generate code, so they don't
+                       # produce newline chars.
+
+            # Assignment Statement.
+            else:
+                self.Assignment_Statement()
 
         else:
             token = self.lookAhead(1)
@@ -215,6 +289,7 @@ class Silver_Parser:
             #self.Error("Parse Error: Not a statement.")
             self.Error("Parse Error", f"The {type} token [{value}] is not the start of an Agnostic programming language statement", "write a statement that I can understand, such as print(input()), char x, or x = input().", token)
 
+        self.comments()
         self.write("\n")
         self.linemap['python_line'] += 1 # Keep track of python line number.
 
@@ -234,6 +309,11 @@ class Silver_Parser:
 
             if(not self.symbolDefined(varname)):
                 self.warn("Compile Error", f"The variable {varname} doesn't exist yet", f"declare the variable before using it in this expression.", token)
+        
+        elif self.checkLookAhead(1, Silver_Lexer.Silver_Lexer.Token.End, None):
+            token = self.lookAhead(1)
+            self.Error("Parse Error", f"I've reached the end of the file without seeing the end of your expression", "Please finish writing the end of your program.", token)
+
         else:
             token = self.lookAhead(1)
             value = token['value']
@@ -253,7 +333,8 @@ class Silver_Parser:
 
     def Declaration_Statement(self):
 
-        type_value = self.Type_Declaration()
+        self.Accept("Keyword", "declare")
+        type_value = self.Expect("Type_Name", None)['value']
         varname    = self.Expect("Variable_Name", None)['value']
 
         self.declareSymbol(varname, type_value)
@@ -272,13 +353,6 @@ class Silver_Parser:
         self.write(f" # Declaration of {varname} as a variable of type {type_value}.")
         
         return
-
-    def Type_Declaration(self):
-        
-        if self.checkLookAhead(1, 'Keyword', "declare"):
-            self.Expect("Keyword", "declare")
-
-        return self.Expect("Type_Name", None)['value']
 
     def Assignment_Statement(self):
 
@@ -301,6 +375,27 @@ class Silver_Parser:
         self.write(varname)
         return varname
 
+    def Definition_Statement(self):
+
+        varname = self.Expect('Variable_Name', None)['value']
+
+        self.Expect('Keyword', 'means')
+
+        definition_token = self.Expect('String', None)
+
+        # Associate this varname with definition string of code.
+        self.defineSymbol(varname, definition_token)
+
+        # No code is generated here, this merely affects how
+        # instances of the varname are lexed later in this parse.
+
+        return
+
     def number_literal(self):
 
         return self.Expect('Number', None)['value']
+
+    def comments(self):
+        if len(self.commentQueue) > 0:
+            self.write(f'#{", ".join(self.commentQueue)}')
+            self.commentQueue = []

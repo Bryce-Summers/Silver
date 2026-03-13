@@ -1,2 +1,20 @@
+# --------------------------------------------------------------
+# Python Code File, generated on Mar.13.26 from Silver_Parser.py
+# Silver compiles .Ag program files. Written by Bryce Summers.
+# --------------------------------------------------------------
+
 x = str(input()) # Declaration of x as a variable of type char.
-print2 # [<- I can't assign a value to the variable print2 that doesn't yet exist. Try to declare print2 by writing a typename before the variable name. Ex: char x = ..., rather than x = ...]  =  # [<- The String token ["print x, then print x"] is not the start of an Agnostic programming language expression. Try to write an expression that I can understand, such as input(), '(' expression ')', or a variable name. ] 
+# Comment!
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)
+print(x)

@@ -1,4 +1,5 @@
-# Last Modified by Bryce Summers on Mar.6.2026.
+# Last Modified by Bryce Summers on Mar.9.2026.
+# Version 1.3
 """
     # GRAMMAR for .ag files.
 
@@ -8,7 +9,11 @@
     Agnostic_Programming_File = ^ Statements # ^ is start of file token.
 
     Statements = | Statement Statements
+                 | Statement ',' Inline_Statements
                  | $                    # End of File token.
+
+    Inline_Statements = | Statement ',' Inline_Statements
+                        | 'then' Statement Statements
 
     Statement = | '\n\n'                # Multi-Newline.
                 | "print" Expression
@@ -30,18 +35,19 @@
     Input_Statement = | "input" '(' ')'
                       | "input"
 
-    Declaration_Statement = | Type_Declaration variable_name
-                            | Type_Declaration variable_name '=' 
-                              Expression
+    Declaration_statement = | 'declare' Declaration_Statement
+                            | Declaration_Statement
 
-    Type_Declaration = | 'declare' type_name
-                       | type_name
+    Declaration_Statement' = | type_name variable_name
+                             | type_name variable_name '=' 
+                               Expression
 
     Assignment_Statement = | Lvalue '=' Expression
 
     Lvalue = | variable_name
 
     Definition_Statement = | variable_name 'means' string
+
 
     # Uppercase are Non-Terminals.
     # Lowercase are individual tokens (terminals).

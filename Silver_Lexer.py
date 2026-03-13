@@ -8,6 +8,14 @@ History:
                 compiler for Transcript reports.
 """
 
+# Static Helper Function.
+def charStream(src_file):
+
+    # blank line is '\n', EOF is ""
+    while (line := src_file.readline()) != "":
+        for char in line:
+            yield char
+
 class Silver_Lexer:
 
     from enum import Enum
@@ -15,10 +23,11 @@ class Silver_Lexer:
     # Start of File, End of File.
     Token = Enum('Token', [('Start', 1), ('End', 2)])
 
-    def __init__(self, open_src_file):
+    def __init__(self, charStream, start_line_number = 1, start_column_number = 1):
         
-        charStream = Silver_Lexer.charStream(open_src_file)
+        print(f"Input charStream to lexer: {charStream}\n\n")
         self.char_list = [char for char in charStream]
+        print(f"Bryce Char List: {self.char_list}\n\n")
         self.next_char_index = -1
         self.end_of_stream_index = len(self.char_list)
 
@@ -26,22 +35,15 @@ class Silver_Lexer:
         self.matchFound = True
         self.token_type = None
 
-        self.src_line_number           = 1
-        self.src_index_of_last_newline = 0
-
-    def charStream(src_file):
-
-        # blank line is '\n', EOF is ""
-        while (line := src_file.readline()) != "":
-            for char in line:
-                yield char
+        self.src_line_number           = start_line_number
+        self.src_index_of_last_newline = (start_column_number - 1)*(-1)
 
     def Accept(self, predicate):
 
-        if not self.matchFound: 
+        if not self.matchFound or self.match_index == self.end_of_stream_index:
             return False
 
-        elif predicate(self.char_list[min(self.match_index, self.end_of_stream_index)]):
+        elif predicate(self.char_list[self.match_index]):
             self.match_index += 1
             return True
 
@@ -76,7 +78,13 @@ class Silver_Lexer:
 
 
     def lookAhead(self, k = 1):
-        return self.char_list[self.match_index + k - 1]
+
+        # Assume source is followed by an infinite amount of whitespace.
+        index = self.match_index + k - 1
+        if index >= len(self.char_list): return ' '
+
+        # Character is in bounds, read form source as normal.
+        return self.char_list[index]
 
     # -----------------------------------------------------------------
     # The parser calls this function to lazily lex a stream of tokens.|
@@ -113,7 +121,7 @@ class Silver_Lexer:
         token = {'type':self.token_type, 'value':self.next_token,
                  'line_number': self.src_line_number, 'char_number': char_number}
         
-        print(token)
+        #print(token)
         return token
 
     def _calculateNextToken (self):
@@ -145,7 +153,8 @@ class Silver_Lexer:
 
     # Describes the order in which all possible tokens are tested.
     def anytoken(self):
-        if self.newline() or\
+        if self.comment() or\
+           self.newline() or\
            self.ws() or\
            self.syntaxSymbol() or\
            self.keyword() or\
@@ -157,6 +166,19 @@ class Silver_Lexer:
 
         raise Exception(f"LexerError: No prefix was matched for input:"
                        f"{"".join(self.char_list[self.next_char_index:])}"  )
+
+    def comment(self):
+        self.startMatch()
+
+        if not self.ExpectChar('#'): return False
+
+        while self.Accept(lambda c: c != '\n'): pass
+
+        if self.matchFound:
+            self.next_token = self.matchText()[1:]
+            self.token_type = "comment"
+
+        return self.matchFound        
 
     def newline(self):
 
@@ -187,7 +209,7 @@ class Silver_Lexer:
         self.startMatch()
 
         value = self.char_list[self.match_index]
-        self.Expect(lambda c:c in list("()="))
+        self.Expect(lambda c:c in list("()=,"))
 
         if self.matchFound:
             self.next_token = self.matchText()
@@ -203,7 +225,7 @@ class Silver_Lexer:
         # Could possibly be sped up if it checked prefixes.
         # Or used a state machine.
 
-        for word in ["print", "input", "declare"]:
+        for word in ["print", "input", "declare", 'means', 'then']:
             self.startMatch()
             self.ExpectString(word)
 
@@ -272,7 +294,7 @@ class Silver_Lexer:
            
         token_text = self.matchText()
 
-        self.next_token = str(token_text)
+        self.next_token = str(token_text[1:-1]) # Strip '"' quotes.
         self.token_type = "String" # String.
 
         return True
